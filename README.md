@@ -1,44 +1,42 @@
 # godot-quest3-gs-viewer
 
-**Meta Quest 3 (単体動作)** とデスクトップに対応した、Godot 4.7 製の 3D Gaussian Splatting ビューアー。
+A 3D Gaussian Splatting viewer for **standalone Meta Quest 3** and desktop, built with Godot 4.7.
 
-A 3D Gaussian Splatting viewer for standalone Meta Quest 3 and desktop, built with Godot 4.7.
+- Rendering: [godot-gaussian-splatting (gdgs)](https://github.com/ReconWorldLab/godot-gaussian-splatting) (MIT, bundled in `addons/`)
+- Quest support: [Godot OpenXR Vendors](https://github.com/GodotVR/godot_openxr_vendors) (bundled)
+- Supported formats: `.ply` / `.compressed.ply` / `.splat` / `.sog`
 
-- レンダリング: [godot-gaussian-splatting (gdgs)](https://github.com/ReconWorldLab/godot-gaussian-splatting) (MIT, `addons/` に同梱)
-- Quest対応: [Godot OpenXR Vendors](https://github.com/GodotVR/godot_openxr_vendors) (同梱)
-- 対応形式: `.ply` / `.compressed.ply` / `.splat` / `.sog`
+## Controls
 
-## 操作
+**Desktop** (`main.tscn`): left drag = orbit / right drag = pan / wheel = zoom / drag & drop a file to load it / `O` = file dialog / `N`/`P` = switch sample / `R` = reset
 
-**デスクトップ** (`main.tscn`): 左ドラッグ=回転 / 右ドラッグ=パン / ホイール=ズーム / ファイルをドラッグ&ドロップで読込 / `O`=ファイル選択 / `N`/`P`=サンプル切替 / `R`=リセット
+**Quest 3** (`main_xr.tscn`, auto-selected on Android): grip or trigger = grab to move/rotate (both hands = scale) / left stick = move / right stick = snap turn & up/down / right A = reset / right B & left X = switch scene
 
-**Quest 3** (`main_xr.tscn`, Androidで自動選択): グリップ/トリガー=掴んで移動・回転(両手で拡縮) / 左スティック=移動 / 右スティック=スナップ回転・上下 / 右A=リセット / 右B・左X=シーン切替
+To add files on Quest: copy them via USB into `Android/data/<package name>/files/splats/` and restart the app.
 
-Questへのファイル追加: USBで `Android/data/<パッケージ名>/files/splats/` に置いて再起動。
+## Getting started
 
-## 使い方
+1. Open the project with Godot 4.7.x
+2. Put a `.ply` into `samples/` (not included in this repo), or just drag & drop one at runtime
+3. Run `main.tscn`
 
-1. Godot 4.7.x でプロジェクトを開く
-2. `.ply` を `samples/` に置く(リポジトリには含まれません)か、実行後にドラッグ&ドロップ
-3. `main.tscn` を実行
+**Quest build**: set up JDK 17 + Android SDK in the editor settings, then export with the bundled "Android Quest" preset (run `Project > Install Android Build Template` first — the OpenXR vendors plugin requires Gradle builds).
 
-**Quest向けビルド**: JDK 17 + Android SDK を設定し、同梱の「Android Quest」プリセットでエクスポート(gradleビルド使用のため、事前に Project > Install Android Build Template が必要)。
+**Rule of thumb**: standalone Quest 3 handles roughly 0.5–1M splats. A model *trained* with a splat cap (e.g. `--max-cap`) looks dramatically better than a large model subsampled down to the same count.
 
-**目安**: Quest 3 単体では50万〜100万スプラット程度。学習時に `--max-cap` で数を絞ったモデルの方が、間引いたモデルより同じ数で圧倒的に綺麗です。
+## Local patches to the gdgs addon (v3.3.0)
 
-## gdgs への局所パッチ (v3.3.0)
-
-- `gaussian_backend_selector.gd`: バックエンド自動判定を `RenderingServer.get_current_rendering_method()` 基準に修正(モバイル用オーバーライドが無視され、QuestでCompute(非対応)が選ばれて真っ黒になるバグの修正)
-- `raster_render_backend.gd`: 再ソート閾値を1°→5°に緩和(Questで頭を振った時のカクつき対策)
+- `gaussian_backend_selector.gd`: backend auto-detection now uses `RenderingServer.get_current_rendering_method()`. The raw project setting ignores platform overrides like `rendering_method.mobile`, which made Quest builds silently pick the desktop-only Compute backend and render nothing. (Submitted upstream: [PR #27](https://github.com/ReconWorldLab/godot-gaussian-splatting/pull/27))
+- `raster_render_backend.gd`: re-sort camera threshold relaxed from ~1° to ~5° to reduce hitching during head turns on mobile.
 
 ## Credits
 
-このプロジェクトは以下のOSSの上に成り立っています:
+This project is built on:
 
-- **[godot-gaussian-splatting (gdgs)](https://github.com/ReconWorldLab/godot-gaussian-splatting)** by ReconWorldLab — Gaussian Splattingのレンダリング本体。MIT License ([addons/gdgs/LICENSE](addons/gdgs/LICENSE))
-- **[Godot OpenXR Vendors](https://github.com/GodotVR/godot_openxr_vendors)** by Godot XR contributors — Meta Quest向けOpenXRローダー/ベンダー拡張。MIT License ([addons/godotopenxrvendors/](addons/godotopenxrvendors/))
+- **[godot-gaussian-splatting (gdgs)](https://github.com/ReconWorldLab/godot-gaussian-splatting)** by ReconWorldLab — the Gaussian Splatting renderer. MIT License ([addons/gdgs/LICENSE](addons/gdgs/LICENSE))
+- **[Godot OpenXR Vendors](https://github.com/GodotVR/godot_openxr_vendors)** by the Godot XR contributors — OpenXR loader / vendor extensions for Meta Quest. MIT License ([addons/godotopenxrvendors/](addons/godotopenxrvendors/))
 - **[Godot Engine](https://godotengine.org/)** — MIT License
 
 ## License
 
-プロジェクト本体は [MIT License](LICENSE)。`addons/` 内の各プラグインは上記の同梱ライセンスに従います。
+The project itself is [MIT licensed](LICENSE). Bundled plugins in `addons/` keep their own licenses listed above.
