@@ -1,0 +1,13 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+/build/
+
+# Sample splat data (large binary files; bring your own .ply)
+/samples/*.ply
+/samples/*.ply.import
+/samples/*.splat
+/samples/*.sog
+
+# Local exports
+*.apk

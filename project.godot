@@ -1,0 +1,31 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+
+config_version=5
+
+[application]
+
+config/name="gs_viewer"
+run/main_scene="res://main.tscn"
+run/main_scene.android="res://main_xr.tscn"
+config/features=PackedStringArray("4.7", "Forward Plus")
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/gdgs/plugin.cfg")
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
+renderer/rendering_method.mobile="mobile"
+textures/vram_compression/import_etc2_astc=true
+
+[xr]
+
+openxr/enabled=true
+openxr/startup_alert=false
+openxr/foveation_level=3
+openxr/foveation_dynamic=true
+openxr/render_target_size_multiplier=0.8
+shaders/enabled=true
