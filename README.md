@@ -41,4 +41,4 @@ Questへのファイル追加: USBで `Android/data/<パッケージ名>/files/s
 
 ## License
 
-`addons/` 内の各プラグインは上記の同梱ライセンスに従います。プロジェクト本体のコード(`main.gd` / `main_xr.gd` / シーン)のライセンスは未指定です。
+プロジェクト本体は [MIT License](LICENSE)。`addons/` 内の各プラグインは上記の同梱ライセンスに従います。
