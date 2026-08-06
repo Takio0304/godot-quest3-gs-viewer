@@ -1,8 +1,8 @@
-# GS Viewer
+# godot-quest3-gs-viewer
 
-Godot 4.7 製の 3D Gaussian Splatting ビューアー。デスクトップと **Meta Quest 3 (単体動作)** に対応。
+**Meta Quest 3 (単体動作)** とデスクトップに対応した、Godot 4.7 製の 3D Gaussian Splatting ビューアー。
 
-A 3D Gaussian Splatting viewer for desktop and standalone Meta Quest 3, built with Godot 4.7.
+A 3D Gaussian Splatting viewer for standalone Meta Quest 3 and desktop, built with Godot 4.7.
 
 - レンダリング: [godot-gaussian-splatting (gdgs)](https://github.com/ReconWorldLab/godot-gaussian-splatting) (MIT, `addons/` に同梱)
 - Quest対応: [Godot OpenXR Vendors](https://github.com/GodotVR/godot_openxr_vendors) (同梱)
