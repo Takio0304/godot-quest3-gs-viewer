@@ -31,6 +31,14 @@ Questへのファイル追加: USBで `Android/data/<パッケージ名>/files/s
 - `gaussian_backend_selector.gd`: バックエンド自動判定を `RenderingServer.get_current_rendering_method()` 基準に修正(モバイル用オーバーライドが無視され、QuestでCompute(非対応)が選ばれて真っ黒になるバグの修正)
 - `raster_render_backend.gd`: 再ソート閾値を1°→5°に緩和(Questで頭を振った時のカクつき対策)
 
+## Credits
+
+このプロジェクトは以下のOSSの上に成り立っています:
+
+- **[godot-gaussian-splatting (gdgs)](https://github.com/ReconWorldLab/godot-gaussian-splatting)** by ReconWorldLab — Gaussian Splattingのレンダリング本体。MIT License ([addons/gdgs/LICENSE](addons/gdgs/LICENSE))
+- **[Godot OpenXR Vendors](https://github.com/GodotVR/godot_openxr_vendors)** by Godot XR contributors — Meta Quest向けOpenXRローダー/ベンダー拡張。MIT License ([addons/godotopenxrvendors/](addons/godotopenxrvendors/))
+- **[Godot Engine](https://godotengine.org/)** — MIT License
+
 ## License
 
-`addons/` 内の各プラグインは同梱の LICENSE (MIT) に従います。
+`addons/` 内の各プラグインは上記の同梱ライセンスに従います。プロジェクト本体のコード(`main.gd` / `main_xr.gd` / シーン)のライセンスは未指定です。
