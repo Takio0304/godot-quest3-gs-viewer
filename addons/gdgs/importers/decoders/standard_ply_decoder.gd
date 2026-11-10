@@ -6,7 +6,7 @@ const GaussianResourceBuilder = preload("res://addons/gdgs/importers/builders/ga
 
 const SH_COEFF_COUNT := 48
 
-static func decode(path: String) -> Dictionary:
+static func decode(path: String, progress: Callable = Callable()) -> Dictionary:
 	var ply := BinaryPlyReader.read(path, true)
 	if not ply.get("ok", false):
 		return ply
@@ -39,6 +39,8 @@ static func decode(path: String) -> Dictionary:
 	var sh_coeffs: PackedFloat32Array = canonical["sh_coeffs"]
 
 	for i in count:
+		if progress.is_valid() and i % 8192 == 0:
+			progress.call(float(i) / float(maxi(count, 1)))
 		var base := i * stride
 
 		positions[i] = Vector3(
@@ -73,6 +75,9 @@ static func decode(path: String) -> Dictionary:
 			sh_coeffs[coeff_offset + 0] = float(_read_property(data, base, property_map, "f_rest_%d" % coeff_idx, 0.0))
 			sh_coeffs[coeff_offset + 1] = float(_read_property(data, base, property_map, "f_rest_%d" % (coeff_idx + 15), 0.0))
 			sh_coeffs[coeff_offset + 2] = float(_read_property(data, base, property_map, "f_rest_%d" % (coeff_idx + 30), 0.0))
+
+	if progress.is_valid():
+		progress.call(1.0)
 
 	return {
 		"ok": true,

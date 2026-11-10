@@ -8,7 +8,7 @@ const SH_C0 := 0.28209479177387814
 const SQRT2 := 1.4142135623730951
 const SH_COEFF_COUNT := 48
 
-static func decode(path: String) -> Dictionary:
+static func decode(path: String, progress: Callable = Callable()) -> Dictionary:
 	var ply := BinaryPlyReader.read(path, true)
 	if not ply.get("ok", false):
 		return ply
@@ -93,6 +93,8 @@ static func decode(path: String) -> Dictionary:
 	var vertex_data: PackedByteArray = vertex_element.get("data", PackedByteArray())
 
 	for i in count:
+		if progress.is_valid() and i % 8192 == 0:
+			progress.call(float(i) / float(maxi(count, 1)))
 		var base := i * vertex_stride
 		var chunk: Dictionary = chunks[int(i / 256)]
 
@@ -135,6 +137,9 @@ static func decode(path: String) -> Dictionary:
 				sh_coeffs[dst + 0] = _decode_quantized_sh(sh_data[sh_base + coeff_idx])
 				sh_coeffs[dst + 1] = _decode_quantized_sh(sh_data[sh_base + coeff_idx + sh_coeffs_per_channel])
 				sh_coeffs[dst + 2] = _decode_quantized_sh(sh_data[sh_base + coeff_idx + sh_coeffs_per_channel * 2])
+
+	if progress.is_valid():
+		progress.call(1.0)
 
 	return {
 		"ok": true,

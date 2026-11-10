@@ -31,7 +31,7 @@ static func create_canonical(count: int) -> Dictionary:
 		"sh_coeffs": sh_coeffs
 	}
 
-static func build(canonical: Dictionary) -> Dictionary:
+static func build(canonical: Dictionary, progress: Callable = Callable()) -> Dictionary:
 	var count := int(canonical.get("count", 0))
 	var positions: PackedVector3Array = canonical.get("positions", PackedVector3Array())
 	var scales_linear: PackedVector3Array = canonical.get("scales_linear", PackedVector3Array())
@@ -62,6 +62,8 @@ static func build(canonical: Dictionary) -> Dictionary:
 	var aabb_max_v := Vector3(-INF, -INF, -INF)
 
 	for i in count:
+		if progress.is_valid() and i % 8192 == 0:
+			progress.call(float(i) / float(maxi(count, 1)))
 		var pos: Vector3 = positions[i] - center
 		var scale_linear: Vector3 = scales_linear[i]
 		var rotation_value = rotations[i]
@@ -109,6 +111,9 @@ static func build(canonical: Dictionary) -> Dictionary:
 	resource.point_data_byte = points.to_byte_array()
 	resource.xyz = xyz
 	resource.aabb = AABB(aabb_min_v, aabb_max_v - aabb_min_v) if count > 0 else AABB()
+
+	if progress.is_valid():
+		progress.call(1.0)
 
 	return {
 		"ok": true,

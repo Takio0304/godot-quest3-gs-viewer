@@ -7,7 +7,7 @@ const SH_C0 := 0.28209479177387814
 const SH_COEFF_COUNT := 48
 const RECORD_SIZE := 32
 
-static func decode(path: String) -> Dictionary:
+static func decode(path: String, progress: Callable = Callable()) -> Dictionary:
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
 		return _error(FileAccess.get_open_error(), "Unable to open splat file: %s" % path)
@@ -29,6 +29,8 @@ static func decode(path: String) -> Dictionary:
 	var sh_coeffs: PackedFloat32Array = canonical["sh_coeffs"]
 
 	for i in count:
+		if progress.is_valid() and i % 8192 == 0:
+			progress.call(float(i) / float(maxi(count, 1)))
 		var base := i * RECORD_SIZE
 		positions[i] = Vector3(
 			data.decode_float(base + 0),
@@ -58,6 +60,9 @@ static func decode(path: String) -> Dictionary:
 		sh_coeffs[sh_offset + 1] = (float(data[base + 25]) / 255.0 - 0.5) / SH_C0
 		sh_coeffs[sh_offset + 2] = (float(data[base + 26]) / 255.0 - 0.5) / SH_C0
 		opacities[i] = float(data[base + 27]) / 255.0
+
+	if progress.is_valid():
+		progress.call(1.0)
 
 	return {
 		"ok": true,
