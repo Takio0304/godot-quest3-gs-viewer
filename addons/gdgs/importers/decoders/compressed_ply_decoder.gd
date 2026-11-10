@@ -94,7 +94,8 @@ static func decode(path: String, progress: Callable = Callable()) -> Dictionary:
 
 	for i in count:
 		if progress.is_valid() and i % 8192 == 0:
-			progress.call(float(i) / float(maxi(count, 1)))
+			if progress.call(float(i) / float(maxi(count, 1))) == false:
+				return _error(ERR_SKIP, "Loading cancelled")
 		var base := i * vertex_stride
 		var chunk: Dictionary = chunks[int(i / 256)]
 

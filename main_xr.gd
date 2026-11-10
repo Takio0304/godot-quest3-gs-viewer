@@ -33,11 +33,16 @@ const VERTICAL_SPEED := 1.5
 const SNAP_TURN_DEG := 30.0
 const MENU_VISIBLE_ROWS := 7
 const BAR_WIDTH := 0.28
+const LOAD_TIMINGS_PATH := "user://gs_viewer_load_timings.cfg"
+const MENU_STICK_THRESHOLD := 0.55
+const MENU_REPEAT_DELAY := 0.38
+const MENU_REPEAT_INTERVAL := 0.17
 
 var _pivot: Node3D
 var _splat_node: Node3D
 var _status: Label3D
 var _menu: Label3D
+var _menu_panel: MeshInstance3D
 var _progress_label: Label3D
 var _progress_background: MeshInstance3D
 var _progress_fill: MeshInstance3D
@@ -52,6 +57,11 @@ var _file_index := 0
 var _selected_index := 0
 var _menu_visible := true
 var _status_cooldown := 0.0
+var _menu_stick_direction := 0
+var _menu_repeat_clock := 0.0
+var _timings := ConfigFile.new()
+var _load_started_ms := 0
+var _last_successful_load_ms := 0
 var _current_name := "(none)"
 var _point_count := 0
 var _message := ""
@@ -63,6 +73,7 @@ var _loader_mutex := Mutex.new()
 var _loader_phase := ""
 var _loader_fraction := 0.0
 var _loading := false
+var _cancel_requested := false
 var _loading_path := ""
 var _queued_index := -1
 var _resource_loading := false
@@ -77,12 +88,17 @@ func _ready() -> void:
 	_setup_xr()
 	_setup_environment()
 	_setup_rig()
+	_timings.load(LOAD_TIMINGS_PATH)
 	_scan_files()
 	_menu_visible = true
 	_update_menu()
 	_message = "Choose a scene. Initial scan reads names, not model contents."
 
 func _exit_tree() -> void:
+	# Request cooperative cancellation before waiting for worker teardown.
+	_loader_mutex.lock()
+	_cancel_requested = true
+	_loader_mutex.unlock()
 	if _loader_thread != null:
 		_loader_thread.wait_to_finish()
 		_loader_thread = null
@@ -127,11 +143,25 @@ func _setup_rig() -> void:
 	_status.position = Vector3(0, 0.08, -0.05)
 	_left.add_child(_status)
 
+	_menu_panel = MeshInstance3D.new()
+	var panel_shape := QuadMesh.new()
+	panel_shape.size = Vector2(1.15, 0.63)
+	_menu_panel.mesh = panel_shape
+	var panel_mat := StandardMaterial3D.new()
+	panel_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	panel_mat.albedo_color = Color(0.025, 0.035, 0.055, 1.0)
+	panel_mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+	panel_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	panel_mat.no_depth_test = true
+	_menu_panel.material_override = panel_mat
+	_menu_panel.position = Vector3(0, 0.03, -0.835)
+	_camera.add_child(_menu_panel)
+
 	_menu = Label3D.new()
 	_menu.pixel_size = 0.00055
 	_menu.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_menu.no_depth_test = true
-	_menu.position = Vector3(0, 0.11, -0.8)
+	_menu.position = Vector3(0, 0.13, -0.805)
 	_camera.add_child(_menu)
 
 	_progress_label = Label3D.new()
@@ -213,12 +243,20 @@ func _update_progress_bar(fraction: float) -> void:
 	if not _loading:
 		return
 	var snapshot := _progress_snapshot()
-	_progress_label.text = "%s  |  %d%%" % [snapshot["phase"], roundi(fraction * 100.0)]
+	_progress_label.text = "%s  |  %d%%  |  Y: cancel" % [snapshot["phase"], roundi(fraction * 100.0)]
 	var f := clampf(fraction, 0.0, 1.0)
 	_progress_fill.scale.x = maxf(f, 0.001)
 	_progress_fill.position.x = (f - 1.0) * BAR_WIDTH * 0.5
 
 func _physics_process(delta: float) -> void:
+	if _menu_visible:
+		_process_menu_sticks(delta)
+		# Joysticks navigate the menu instead of flying/turning the scene.
+		_held.clear()
+		return
+	if _loading:
+		_held.clear()
+		return
 	_apply_locomotion(delta)
 	var held: Array = []
 	for controller in [_left, _right]:
@@ -235,6 +273,32 @@ func _physics_process(delta: float) -> void:
 		_pivot.global_transform = controller.global_transform * _single_inv * _pivot_start
 	elif _held.size() == 2:
 		_apply_two_hand_grab()
+
+func _process_menu_sticks(delta: float) -> void:
+	var ly := _left.get_vector2("primary").y
+	var ry := _right.get_vector2("primary").y
+	var y := ly if absf(ly) >= absf(ry) else ry
+	_handle_menu_stick_axis(y, delta)
+
+func _handle_menu_stick_axis(y: float, delta: float) -> void:
+	var direction := 0
+	if y > MENU_STICK_THRESHOLD:
+		direction = -1
+	elif y < -MENU_STICK_THRESHOLD:
+		direction = 1
+	if direction == 0:
+		_menu_stick_direction = 0
+		_menu_repeat_clock = 0.0
+		return
+	if direction != _menu_stick_direction:
+		_menu_stick_direction = direction
+		_menu_repeat_clock = MENU_REPEAT_DELAY
+		_move_selection(direction)
+		return
+	_menu_repeat_clock -= delta
+	if _menu_repeat_clock <= 0.0:
+		_menu_repeat_clock = MENU_REPEAT_INTERVAL
+		_move_selection(direction)
 
 func _apply_locomotion(delta: float) -> void:
 	# Left stick: fly relative to gaze (XZ plane). Right stick: snap turn + up/down.
@@ -302,8 +366,13 @@ func _on_right_button(button: String) -> void:
 
 func _on_left_button(button: String) -> void:
 	if button == "by_button":
-		_menu_visible = not _menu_visible
-		_update_menu()
+		if _loading:
+			_cancel_load()
+		else:
+			_menu_visible = not _menu_visible
+			_menu_stick_direction = 0
+			_menu_repeat_clock = 0.0
+			_update_menu()
 	elif button == "ax_button":
 		if _menu_visible:
 			_move_selection(-1)
@@ -339,6 +408,11 @@ func _scan_files() -> void:
 
 func _update_menu() -> void:
 	_menu.visible = _menu_visible
+	_menu_panel.visible = _menu_visible
+	# Temporarily suppress splats while the browser is visible so the
+	# compositor cannot blend them over the menu panel/text.
+	if _splat_node != null:
+		_splat_node.visible = not _menu_visible
 	if not _menu_visible:
 		return
 	if _files.is_empty():
@@ -346,7 +420,7 @@ func _update_menu() -> void:
 		return
 	var first := maxi(0, _selected_index - 3)
 	first = mini(first, maxi(0, _files.size() - MENU_VISIBLE_ROWS))
-	var lines := PackedStringArray(["SCENES (%d)" % _files.size(), "X / B: select   A: load   Y: close", "--------------------------"])
+	var lines := PackedStringArray(["SCENES (%d)" % _files.size(), "Stick up/down: scroll | A: load | Y: back", "--------------------------"])
 	for i in range(first, mini(first + MENU_VISIBLE_ROWS, _files.size())):
 		var path := _files[i]
 		var marker := "> " if i == _selected_index else "  "
@@ -354,9 +428,11 @@ func _update_menu() -> void:
 	var selected_path := _files[_selected_index]
 	lines.append("--------------------------")
 	lines.append(_quick_metadata(selected_path))
-	lines.append("Only selected scene contents are loaded.")
+	lines.append(_load_time_display(selected_path))
 	if _loading:
-		lines.append("Loading %s" % _loading_path.get_file())
+		lines.append("Cancelling..." if _is_cancel_requested() else "Loading %s (Y: cancel)" % _loading_path.get_file())
+	else:
+		lines.append("Only selected file is loaded.")
 	_menu.text = "\n".join(lines)
 
 func _quick_metadata(path: String) -> String:
@@ -385,6 +461,81 @@ func _quick_metadata(path: String) -> String:
 		info += " | %s splats" % _format_count(count)
 	return info
 
+func _timing_key(path: String) -> String:
+	# Include size/mtime so edited files do not inherit old measured times.
+	if path.begins_with("res://"):
+		return path.md5_text()
+	var file := FileAccess.open(path, FileAccess.READ)
+	var size := file.get_length() if file != null else 0
+	return ("%s|%d|%d" % [path, size, FileAccess.get_modified_time(path)]).md5_text()
+
+func _load_time_display(path: String) -> String:
+	var key := _timing_key(path)
+	if _timings.has_section_key("measured", key):
+		return "Previous load: %.1fs (measured on this Quest)" % float(_timings.get_value("measured", key))
+	# Use the closest previously measured file of the same encoding.
+	var file := FileAccess.open(path, FileAccess.READ)
+	var size := file.get_length() if file != null else 0
+	var ext := "compressed.ply" if path.to_lower().ends_with(".compressed.ply") else path.get_extension().to_lower()
+	var nearest := INF
+	var estimate := -1.0
+	if _timings.has_section("samples"):
+		for sample_id in _timings.get_section_keys("samples"):
+			var v: Dictionary = _timings.get_value("samples", sample_id, {})
+			if String(v.get("format", "")) != ext:
+				continue
+			var sample_bytes := int(v.get("bytes", 0))
+			if sample_bytes <= 0 or size <= 0:
+				continue
+			var factor := float(size) / float(sample_bytes)
+			var distance := absf(log(factor))
+			if distance < nearest:
+				nearest = distance
+				estimate = float(v.get("seconds", 0.0)) * factor
+	if estimate > 0.0:
+		return "Estimated: ~%.0fs (based on previous %s load)" % [maxf(1.0, estimate), ext]
+	# Uncalibrated fallback is intentionally a wide range, not a promise.
+	var splats := int(size / 32) if ext == "splat" else -1
+	if ext == "ply" or ext == "compressed.ply":
+		var hdr := BinaryPlyReader.read(path, false)
+		if hdr.get("ok", false):
+			splats = int(BinaryPlyReader.get_element(hdr, "vertex").get("count", -1))
+	if splats > 0:
+		var factor := float(splats) / 200000.0
+		if ext == "splat":
+			return "Rough: %.0f-%.0fs (not calibrated)" % [maxf(1.0, factor), maxf(3.0, 15.0 * factor)]
+		if ext == "ply":
+			return "Rough: %.0f-%.0fs (not calibrated)" % [maxf(1.0, 15.0 * factor), maxf(2.0, 120.0 * factor)]
+	return "First load: time unknown (no local measurements yet)"
+
+func _record_load_time(path: String, seconds: float) -> void:
+	var file := FileAccess.open(path, FileAccess.READ) if not path.begins_with("res://") else null
+	var size := file.get_length() if file != null else 0
+	var ext := "compressed.ply" if path.to_lower().ends_with(".compressed.ply") else path.get_extension().to_lower()
+	var key := _timing_key(path)
+	_timings.set_value("measured", key, seconds)
+	_timings.set_value("samples", key, {"format": ext, "bytes": size, "seconds": seconds})
+	if _timings.save(LOAD_TIMINGS_PATH) != OK:
+		push_warning("Could not save GS Viewer loading measurements")
+	_last_successful_load_ms = roundi(seconds * 1000.0)
+
+func _cancel_load() -> void:
+	if not _loading:
+		return
+	_loader_mutex.lock()
+	_cancel_requested = true
+	_loader_mutex.unlock()
+	_queued_index = -1
+	_menu_visible = true
+	_message = "Cancellation requested; releasing current loader..."
+	_update_menu()
+
+func _is_cancel_requested() -> bool:
+	_loader_mutex.lock()
+	var cancelled := _cancel_requested
+	_loader_mutex.unlock()
+	return cancelled
+
 func _load_index(index: int) -> void:
 	if _files.is_empty():
 		return
@@ -396,6 +547,10 @@ func _load_index(index: int) -> void:
 	_file_index = candidate
 	_selected_index = candidate
 	_loading_path = _files[candidate]
+	_loader_mutex.lock()
+	_cancel_requested = false
+	_loader_mutex.unlock()
+	_load_started_ms = Time.get_ticks_msec()
 	_loading = true
 	_message = "Loading selected scene only"
 	_menu_visible = false
@@ -421,21 +576,29 @@ func _load_index(index: int) -> void:
 func _worker_load(path: String) -> Dictionary:
 	# File, array, and resource preparation only; no scene-tree changes.
 	_set_progress("Reading / decoding selected file", 0.05)
+	if _is_cancel_requested():
+		return {"ok": false, "cancelled": true}
 	var decoded: Dictionary = _decode_source(path)
+	if _is_cancel_requested():
+		return {"ok": false, "cancelled": true}
 	if not decoded.get("ok", false):
 		return {"ok": false, "message": decoded.get("message", "Decode error")}
 	_set_progress("Building Gaussian resource", 0.60)
 	var built: Dictionary = GaussianResourceBuilder.build(decoded["canonical"], Callable(self, "_on_build_progress"))
+	if _is_cancel_requested():
+		return {"ok": false, "cancelled": true}
 	if not built.get("ok", false):
 		return {"ok": false, "message": built.get("message", "Build error")}
 	_set_progress("Ready to activate", 0.98)
 	return built
 
-func _on_decode_progress(fraction: float) -> void:
+func _on_decode_progress(fraction: float) -> bool:
 	_set_progress("Decoding splats", 0.05 + clampf(fraction, 0.0, 1.0) * 0.53)
+	return not _is_cancel_requested()
 
-func _on_build_progress(fraction: float) -> void:
+func _on_build_progress(fraction: float) -> bool:
 	_set_progress("Building Gaussian arrays", 0.60 + clampf(fraction, 0.0, 1.0) * 0.37)
+	return not _is_cancel_requested()
 
 func _set_progress(phase: String, fraction: float) -> void:
 	_loader_mutex.lock()
@@ -471,7 +634,16 @@ func _poll_loader() -> void:
 		_complete_load(result)
 
 func _complete_load(result: Dictionary) -> void:
+	var cancelled := _is_cancel_requested()
 	_loading = false
+	if cancelled:
+		# Discard all worker results, even if the worker finished just before Y.
+		result.clear()
+		_message = "Load cancelled"
+		_menu_visible = true
+		if _queued_index == -1:
+			_update_menu()
+			return
 	if _queued_index >= 0:
 		var next_index := _queued_index
 		_queued_index = -1
@@ -485,7 +657,9 @@ func _complete_load(result: Dictionary) -> void:
 		_finish_with_error("Missing Gaussian resource")
 		return
 	_show_gaussian(gaussian, _loading_path.get_file())
-	_message = "Ready. Y: browser, A: reset, X/B: switch"
+	var seconds := float(Time.get_ticks_msec() - _load_started_ms) / 1000.0
+	_record_load_time(_loading_path, seconds)
+	_message = "Loaded in %.1fs | Y: browser, A: reset" % seconds
 
 func _finish_with_error(message: String) -> void:
 	_loading = false
@@ -499,7 +673,7 @@ func _decode_source(path: String) -> Dictionary:
 	if lower.ends_with(".splat"):
 		return SplatDecoder.decode(path, Callable(self, "_on_decode_progress"))
 	if lower.ends_with(".sog"):
-		return SogDecoder.decode(path)
+		return SogDecoder.decode(path, Callable(self, "_on_decode_progress"))
 	if lower.ends_with(".ply"):
 		var header: Dictionary = BinaryPlyReader.read(path, false)
 		if not header.get("ok", false):

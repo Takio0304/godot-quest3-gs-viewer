@@ -57,7 +57,39 @@ func _test() -> void:
 		push_error("X did not move backwards")
 		quit(8)
 		return
+	# Both thumbsticks call the same axis handler. Verify held-stick repeats
+	# rather than resetting every time the menu redraws.
+	_viewer._selected_index = 0
+	_viewer._handle_menu_stick_axis(-0.9, 0.016)
+	if _viewer._selected_index != 1:
+		push_error("Thumbstick failed to scroll down")
+		quit(10)
+		return
+	_viewer._handle_menu_stick_axis(-0.9, 0.40)
+	if _viewer._selected_index != 0:
+		push_error("Held thumbstick failed to repeat")
+		quit(11)
+		return
+	_viewer._handle_menu_stick_axis(0.0, 0.016)
+	_viewer._handle_menu_stick_axis(0.9, 0.016)
+	if _viewer._selected_index != 1:
+		push_error("Thumbstick failed to scroll up")
+		quit(12)
+		return
+	print("PASS thumbsticks: navigation, held-repeat and neutral re-arm")
+	var sample_node := Node3D.new()
+	_viewer._pivot.add_child(sample_node)
+	_viewer._splat_node = sample_node
+	_viewer._update_menu()
+	if sample_node.visible or not _viewer._menu_panel.visible:
+		push_error("Menu did not mask scene with opaque panel")
+		quit(13)
+		return
 	_viewer._on_left_button("by_button")
+	if not sample_node.visible or _viewer._menu_panel.visible:
+		push_error("Scene visibility did not restore when menu closed")
+		quit(14)
+		return
 	if _viewer._menu_visible:
 		push_error("Y did not close the browser")
 		quit(9)

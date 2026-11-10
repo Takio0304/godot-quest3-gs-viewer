@@ -63,7 +63,8 @@ static func build(canonical: Dictionary, progress: Callable = Callable()) -> Dic
 
 	for i in count:
 		if progress.is_valid() and i % 8192 == 0:
-			progress.call(float(i) / float(maxi(count, 1)))
+			if progress.call(float(i) / float(maxi(count, 1))) == false:
+				return _error(ERR_SKIP, "Loading cancelled")
 		var pos: Vector3 = positions[i] - center
 		var scale_linear: Vector3 = scales_linear[i]
 		var rotation_value = rotations[i]

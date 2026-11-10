@@ -30,7 +30,8 @@ static func decode(path: String, progress: Callable = Callable()) -> Dictionary:
 
 	for i in count:
 		if progress.is_valid() and i % 8192 == 0:
-			progress.call(float(i) / float(maxi(count, 1)))
+			if progress.call(float(i) / float(maxi(count, 1))) == false:
+				return _error(ERR_SKIP, "Loading cancelled")
 		var base := i * RECORD_SIZE
 		positions[i] = Vector3(
 			data.decode_float(base + 0),

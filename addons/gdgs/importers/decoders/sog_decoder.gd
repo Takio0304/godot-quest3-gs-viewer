@@ -11,7 +11,7 @@ const SH_COEFFS_PER_BAND := {
 }
 const SQRT2 := 1.4142135623730951
 
-static func decode(path: String) -> Dictionary:
+static func decode(path: String, progress: Callable = Callable()) -> Dictionary:
 	var zip_reader := ZIPReader.new()
 	var open_error := zip_reader.open(path)
 	if open_error != OK:
@@ -154,6 +154,10 @@ static func decode(path: String) -> Dictionary:
 		shn_labels_data = shn_labels["data"]
 
 	for i in count:
+		if progress.is_valid() and i % 8192 == 0:
+			if progress.call(float(i) / float(maxi(count, 1))) == false:
+				zip_reader.close()
+				return _error(ERR_SKIP, "Loading cancelled")
 		var means_rgb_offset := i * 3
 		var quats_rgba_offset := i * 4
 		var sh0_rgba_offset := i * 4
